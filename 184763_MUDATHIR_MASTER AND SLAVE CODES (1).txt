@@ -1,0 +1,130 @@
+SLAVE 1
+ uint8_t clk=7;
+ uint8_t data=6;
+const uint8_t sensor_pins[3]={A0,A1,3};
+uint8_t sensor_readings[3]={};
+  
+void setup()
+{
+  for(int i=0;i<3;i++)
+    pinMode(sensor_pins[i],INPUT);
+  pinMode(clk,INPUT);
+  pinMode(data,OUTPUT);
+  Serial.begin(9600);
+}
+
+void loop()
+{
+  for(int i=0;i<3;i++){
+    for(int j=0;j<8;j++){
+    while(!digitalRead(clk));
+    switch(i)
+    {
+      case 0:
+      sensor_readings[i]=((analogRead(sensor_pins[i])-11)/805.0 *100);
+      break;
+      case 1:
+      sensor_readings[i]=(analogRead(sensor_pins[i])-31)/337.0 *100;
+      break;
+      case 2:
+      sensor_readings[i]=digitalRead(sensor_pins[i]);
+      break;
+    }
+    uint8_t q=(sensor_readings[i]&(1<<j))!=0;
+    digitalWrite(data,q);
+    while(digitalRead(clk));
+    }
+    Serial.println(sensor_readings[1]);
+  }
+    /*Serial.print(sensor_readings[i]);*/
+}
+MASTER
+#include<Wire.h>
+uint8_t clk=8;
+uint8_t data=9;
+uint8_t readings[3]={};
+uint8_t flag;
+void setup()
+{
+  pinMode(clk, OUTPUT);
+  pinMode(data,INPUT);
+  Serial.begin(9600);
+  Wire.begin();
+  pinMode(5,OUTPUT);
+  
+}
+
+void loop()
+{
+  uint8_t c=0;
+  for(int i=0;i<3;i++){
+    flag=0;
+    for(int j=0;j<8;j++)
+    {
+      digitalWrite(clk,HIGH);
+      delay(10);
+      uint8_t v=digitalRead(data)<<j;
+      flag=flag|v;
+      digitalWrite(clk,LOW);
+      delay(10);
+    }
+   readings[i]=flag;
+  }
+  Wire.beginTransmission(80);
+  Wire.write(readings,3);
+  Wire.endTransmission();
+  Wire.requestFrom(80,1);
+  if(Wire.available())
+    c=Wire.read();
+  if(c==200)
+    digitalWrite(5,HIGH);
+  else
+    digitalWrite(5,LOW);
+    
+}
+SLAVE 2:
+#include<Wire.h>
+#include<LiquidCrystal.h>
+LiquidCrystal lcd(12,11,5,4,3,2);
+uint8_t data[3]={};
+uint8_t decision_level[3]={};
+void receive(int bytes)
+{
+  int j=0;
+  while(bytes)
+  {
+    data[j]=Wire.read();
+    j++;
+    bytes--;
+  }
+  lcd.setCursor(5,0);
+  lcd.print(data[1]);
+  lcd.setCursor(15,0);
+  lcd.print(data[2]);
+  lcd.setCursor(6,1);
+  lcd.print(data[0]);
+}
+void send()
+{
+  if(data[0]>=70&&data[0]<=90&&data[1]>=25&&data[1]<=50&& data[2]==0)
+    Wire.write(200);
+  else
+    Wire.write(0);
+}
+void setup()
+{
+  Wire.begin(80);
+  lcd.begin(16,2);
+  lcd.print("temp:");
+  lcd.setCursor(8,0);
+  lcd.print("motion:");
+  lcd.setCursor(0,1);
+  lcd.print("light:");
+  Wire.onReceive(&receive);
+  Wire.onRequest(&send);
+}
+
+void loop()
+{
+ 
+}
